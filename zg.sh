@@ -10,7 +10,7 @@
 # Initialize variables
 QUIET=0 SILENT=0 DEBUG=0
 LOG_FILE="/sdcard/Download/zg_debug.log.txt"
-WARNING_THRESHOLD_DAYS=365
+WARNING_THRESHOLD_DAYS=30
 declare -i TOTAL_FILES=0 TOTAL_INVALID=0 TOTAL_AOSP=0 TOTAL_VALID=0 TOTAL_WARNING=0 TOTAL_TAMPERED=0 TOTAL_SKIPPED=0
 declare -a INVALID_KEYBOXES AOSP_KEYBOXES WARNING_KEYBOXES TAMPERED_KEYBOXES SKIPPED_KEYBOXES VALID_KEYBOXES
 
@@ -324,14 +324,28 @@ generate_report() {
             warn "KeyBox has EXPIRED"
         fi
         echo "!!!! KeyBox has EXPIRED" >> "$TXT"
-        [ $SILENT -eq 0 ] && echo ""
-        if [ $L -eq 0 ]; then
-            TOTAL_INVALID=$((TOTAL_INVALID + 1))
-            INVALID_KEYBOXES+=("${KB##*/}")
-            added_to_invalid=1
+        # Reduce the two-line gap to one line by removing one echo ""
+        if [ $L -gt 0 ]; then
+            if [ $SILENT -eq 1 ]; then
+                print_red "KeyBox is COMPROMISED"
+            else
+                warn "KeyBox is COMPROMISED"
+            fi
+            echo "!!!! KeyBox is COMPROMISED" >> "$TXT"
+            [ $SILENT -eq 0 ] && echo ""
+            if [ $added_to_invalid -eq 0 ]; then
+                TOTAL_INVALID=$((TOTAL_INVALID + 1))
+                INVALID_KEYBOXES+=("${KB##*/}")
+            fi
+        else
+            [ $SILENT -eq 0 ] && echo ""
+            if [ $L -eq 0 ]; then
+                TOTAL_INVALID=$((TOTAL_INVALID + 1))
+                INVALID_KEYBOXES+=("${KB##*/}")
+                added_to_invalid=1
+            fi
         fi
-    fi
-    if [ $L -gt 0 ]; then
+    elif [ $L -gt 0 ]; then
         [ $SILENT -eq 0 ] && echo ""
         if [ $SILENT -eq 1 ]; then
             print_red "KeyBox is COMPROMISED"
@@ -366,6 +380,8 @@ generate_report() {
         fi
     fi
     if [ $K -eq 0 ] && [ $L -eq 0 ]; then
+        # Add a blank line above "-- KeyBox is not compromised or expired"
+        [ $SILENT -eq 0 ] && echo ""
         print "KeyBox is not compromised or expired"
         echo "-- KeyBox is not compromised or expired" >> "$TXT"
         [ $SILENT -eq 0 ] && echo ""
