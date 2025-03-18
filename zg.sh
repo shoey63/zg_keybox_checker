@@ -482,7 +482,7 @@ if [ $QUIET -eq 0 ]; then
         print "  No keyboxes nearing expiry"
     fi
     if [ ${#VALID_KEYBOXES[@]} -gt 0 ]; then
-        print "  Total valid keyboxes: ${#VALID_KEYBOXES[@]}"
+        print_blue "--   Total valid keyboxes: ${#VALID_KEYBOXES[@]}"
         for kb in "${VALID_KEYBOXES[@]}"; do print "    $kb"; done
     else
         print "  No valid keyboxes found"
