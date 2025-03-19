@@ -1,11 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
+# zg.sh v2.1 - Updated March 2025
 # Usage: ./zg.sh [-q] [-s] [-d] [directory_or_file]
 # Dependencies: openssl-tool, wget
 # Purpose: Processes keybox.xml files to check certificate expiration and revocation status
 # Original code by zgfg@xda © Jan 2025 - All Rights Reserved
 # Modified and extended by shoey63 (XDA) with Grok 3 (xAI) - March 2025
-# Updated version - March 2025
 
 # Initialize variables
 QUIET=0 SILENT=0 DEBUG=0
@@ -19,75 +19,105 @@ GREEN='\033[1;32m' YELLOW='\033[1;38;5;220m' LIGHT_YELLOW='\033[0;93m' PINK='\03
 RED='\033[31m' BOLD_RED='\033[1;31m' ORANGE='\033[1;38;5;208m' NC='\033[0m' BLUE='\033[1;34m'
 BOLD_YELLOW='\033[1;33m' PURPLE='\033[1;35m'
 
-# --- Debug Logging ---
-log_debug() { [ $DEBUG -eq 1 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@" >> "$LOG_FILE" 2>/dev/null; }
+# Debug Logging
+# Log debug messages to a file with a timestamp if DEBUG is enabled
+log_debug() {
+    if [ $DEBUG -eq 1 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@" >> "$LOG_FILE" || {
+            printf "${BOLD_RED}!!!! ERROR: Failed to write to debug log $LOG_FILE${NC}\n" >&2
+            exit 1
+        }
+    fi
+}
 
-# --- File Permission Check ---
+# File Permission Check
+# Ensure Termux has file access permissions
 check_file_permissions() {
     DEFAULT_DIR="/sdcard/Download"
-    if ! mkdir -p "$DEFAULT_DIR" 2>/dev/null || ! touch "$DEFAULT_DIR/_zg_test_permission.txt" 2>/dev/null; then
+    if ! mkdir -p "$DEFAULT_DIR" 2>/dev/null || \
+       ! touch "$DEFAULT_DIR/_zg_test_permission.txt" 2>/dev/null; then
         # This is an error case, so we allow output even in quiet mode to inform the user
         printf "${BOLD_RED}!!!! ERROR: Termux requires file access permission. Grant it in App Settings > Permissions > Files and retry.${NC}\n"
         exit 1
     fi
     rm -f "$DEFAULT_DIR/_zg_test_permission.txt" 2>/dev/null
 }
-
 check_file_permissions
 
-# --- Helper Functions ---
-print() { 
+# Helper Functions
+# Print a message in green with a "--" prefix
+print() {
     log_debug "PRINT: $@"
     [ $QUIET -eq 0 ] && printf "${GREEN}-- %s${NC}\n" "$@" 2>&1
 }
-print_yellow() { 
+
+# Print a message in yellow with a "--" prefix
+print_yellow() {
     log_debug "PRINT_YELLOW: $@"
     [ $QUIET -eq 0 ] && printf "${YELLOW}-- %s${NC}\n" "$@" 2>&1
 }
-print_light_yellow() { 
+
+# Print a message in light yellow
+print_light_yellow() {
     log_debug "PRINT_LIGHT_YELLOW: $@"
     [ $QUIET -eq 0 ] && printf "${LIGHT_YELLOW}%s${NC}\n" "$@" 2>&1
 }
-print_orange() { 
+
+# Print a message in orange with a "--" prefix
+print_orange() {
     log_debug "PRINT_ORANGE: $@"
     [ $QUIET -eq 0 ] && printf "${ORANGE}-- %s${NC}\n" "$@" 2>&1
 }
-print_red() { 
+
+# Print a message in bold red with a "--" prefix
+print_red() {
     log_debug "PRINT_RED: $@"
     [ $QUIET -eq 0 ] && printf "${BOLD_RED}-- %s${NC}\n" "$@" 2>&1
 }
-print_pink() { 
+
+# Print a message in pink with a "--" prefix
+print_pink() {
     log_debug "PRINT_PINK: $@"
     [ $QUIET -eq 0 ] && printf "${PINK}-- %s${NC}\n" "$@" 2>&1
 }
-print_blue() { 
+
+# Print a message in blue
+print_blue() {
     log_debug "PRINT_BLUE: $@"
     [ $QUIET -eq 0 ] && printf "${BLUE}%s${NC}\n" "$@" 2>&1
 }
-print_bold_yellow() { 
+
+# Print a message in bold yellow with a "--" prefix
+print_bold_yellow() {
     log_debug "PRINT_BOLD_YELLOW: $@"
     [ $QUIET -eq 0 ] && printf "${BOLD_YELLOW}-- %s${NC}\n" "$@" 2>&1
 }
-print_purple() { 
+
+# Print a message in purple with a "--" prefix
+print_purple() {
     log_debug "PRINT_PURPLE: $@"
     [ $QUIET -eq 0 ] && printf "${PURPLE}-- %s${NC}\n" "$@" 2>&1
 }
-warn() { 
+
+# Print a warning message in bold red with a "!!!!" prefix
+warn() {
     log_debug "WARN: $@"
     [ $QUIET -eq 0 ] && [ $SILENT -eq 0 ] && printf "${BOLD_RED}!!!! %s${NC}\n" "$@" 2>&1
 }
-error() { 
+
+# Print an error message in bold red and exit
+error() {
     log_debug "ERROR: $@"
     # This is an error case, so we allow output even in quiet mode to inform the user
     printf "${BOLD_RED}!!!! ERROR: %s, cannot proceed${NC}\n" "$@" 2>&1
     exit 1
 }
 
-# --- Dependency Check ---
+# Dependency Check
+# Install a package if it's not already installed
 install_package() {
     local pkg="$1" check="$2"
     local temp_file=$(mktemp)
-
     log_debug "Checking for $pkg"
     if ! $check >/dev/null 2>&1; then
         [ $QUIET -eq 0 ] && [ $SILENT -eq 0 ] && printf "\n${BLUE}Installing ${YELLOW}$pkg${BLUE}...${NC}\n\n"
@@ -95,10 +125,12 @@ install_package() {
         pkg install "$pkg" -y >"$temp_file" 2>&1
         local install_status=$?
         cat "$temp_file" | tr -d '\r' | sed 's/\x1B\[[0-9;]*[mK]//g' | grep -v "Reading database" | while IFS= read -r line; do
-            if echo "$line" | grep -q "No mirror or mirror group selected" || echo "$line" | grep -q "WARNING: apt does not have a stable CLI interface"; then
+            if echo "$line" | grep -q "No mirror or mirror group selected" || \
+               echo "$line" | grep -q "WARNING: apt does not have a stable CLI interface"; then
                 continue
             fi
-            if echo "$line" | grep -q -E "Installing|Reading package lists|Building dependency tree|Setting up|Preparing to unpack|Selecting previously"; then
+            if echo "$line" | grep -q -E "Installing|Reading package lists|Building dependency tree|\
+                                          Setting up|Preparing to unpack|Selecting previously"; then
                 [ $QUIET -eq 0 ] && printf "${BLUE}%s${NC}\n" "$line"
             elif echo "$line" | grep -q -E "Error:|warning:|not found"; then
                 [ $QUIET -eq 0 ] && printf "${RED}%s${NC}\n" "$line"
@@ -124,6 +156,7 @@ install_package() {
 install_package openssl-tool "openssl -v"
 install_package wget "wget -V"
 
+# Convert a date string to epoch time
 get_epoch() {
     local date_str="$1"
     local epoch=$(date -d "$date_str" +%s 2>/dev/null)
@@ -132,22 +165,23 @@ get_epoch() {
     return 0
 }
 
-# --- Validate XML Structure ---
+# Validate XML Structure
+# Check if the XML file contains required tags: <AndroidAttestation>, <Keybox>, and <Certificate>
 validate_xml() {
     local KB="$1"
-    if ! grep -q "<AndroidAttestation>" "$KB" || ! grep -q "<Keybox " "$KB" || ! grep -q "<Certificate " "$KB"; then
+    if ! grep -q -E "<AndroidAttestation>|<Keybox |<Certificate " "$KB"; then
         return 1
     fi
     return 0
 }
 
-# --- Optimized Report Generation ---
+# Generate a detailed report for a keybox file
+# Process certificates, check for expiration, compromised status, AOSP type, and tampering
 generate_report() {
     local KB="$1" TXT="$2" JSON="$3"
-    local TMP=$(mktemp) P7B=$(mktemp) CER=$(mktemp)
+    local TMP=$(mktemp) P7B=$(mktemp) CER=$(mktemp) TMP_CERT=$(mktemp)
     local tampering_detected=0
-    trap 'rm -f "$TMP" "$P7B" "$CER" 2>/dev/null' RETURN
-
+    trap 'rm -f "$TMP" "$P7B" "$CER" "$TMP_CERT" 2>/dev/null' RETURN
     if ! validate_xml "$KB"; then
         if [ $SILENT -eq 1 ]; then
             print_bold_yellow "Results for: $KB"
@@ -161,7 +195,8 @@ generate_report() {
         return 1
     fi
 
-    if ! sed 's!">-----BEGIN!">\n-----BEGIN!g;s!CERTIFICATE-----</!CERTIFICATE-----\n</!g;s!^[ \t]*!!' "$KB" > "$TMP"; then
+    if ! sed 's!">-----BEGIN!">\n-----BEGIN!g;s!CERTIFICATE-----</!CERTIFICATE-----\n</!g;s!^[ \t]*!!' \
+             "$KB" > "$TMP"; then
         if [ $SILENT -eq 1 ]; then
             print_bold_yellow "Results for: $KB"
             print_red "Failed to reformat - possible tampering or corruption"
@@ -173,6 +208,7 @@ generate_report() {
         TAMPERED_KEYBOXES+=("${KB##*/}")
         return 1
     fi
+
     if ! openssl crl2pkcs7 -nocrl -certfile "$TMP" -out "$P7B" 2>/dev/null; then
         if [ $SILENT -eq 1 ]; then
             print_bold_yellow "Results for: $KB"
@@ -185,6 +221,7 @@ generate_report() {
         TAMPERED_KEYBOXES+=("${KB##*/}")
         return 1
     fi
+
     if ! openssl pkcs7 -print_certs -text -in "$P7B" -out "$CER" 2>/dev/null; then
         if [ $SILENT -eq 1 ]; then
             print_bold_yellow "Results for: $KB"
@@ -211,6 +248,7 @@ generate_report() {
     declare -A serial_counts
     currentEpoch=$(get_epoch "$(date --utc)") || error "Failed to get current epoch"
     log_debug "Current epoch: $currentEpoch"
+
     sed 's/^[ \t]*//' "$CER" | awk '
         BEGIN {cert_num = 0}
         /^Certificate:/ {if (cert_num > 0) print ""; cert_num++; print "CERTIFICATE: " cert_num; next}
@@ -229,24 +267,26 @@ generate_report() {
         /^Not After :/ {sub(/^Not After : /, ""); print "Not After: " $0; next}
         /^Subject:/ {sub(/^Subject: /, ""); print "Subject: " $0; next}
         /^Public Key Algorithm:/ {sub(/^Public Key Algorithm: /, ""); print "Public Key Algorithm: " $0; next}
-    ' > "$TMP.cert"
+    ' > "$TMP_CERT" || {
+        warn "Failed to process certificate data with awk"
+        echo "!!!! ERROR: Failed to process certificate data with awk" >> "$TXT"
+        TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
+        TAMPERED_KEYBOXES+=("${KB##*/}")
+        return 1
+    }
 
     while IFS= read -r line; do
         log_debug "Line read: $line"
         if [[ "$line" =~ ^CERTIFICATE:\ ([0-9]+) ]]; then
-            if [ $cert_num -gt 0 ] && [ -n "$sn" ] && [ $compromised_printed -eq 0 ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
-                L=$((L + 1))
-                [ $SILENT -eq 0 ] && warn "Certificate $cert_num is compromised"
-                echo "!!!! Certificate $cert_num is compromised" >> "$TXT"
-                compromised_printed=1
-            fi
             cert_num="${BASH_REMATCH[1]}"
             log_debug "Set cert_num to '$cert_num'"
             if [ $SILENT -eq 0 ]; then
                 [ $cert_num -gt 1 ] && [ $QUIET -eq 0 ] && echo ""
-                print_blue "$line"      # Unindent CERTIFICATE line
+                # Unindent CERTIFICATE line
+                print_blue "$line"
             fi
-            echo "$line" >> "$TXT"  # No indent in file output
+            # No indent in file output
+            echo "$line" >> "$TXT"
             sn="" na="" na_epoch="" days_remaining="" issuer="" subject="" cn="" pk_algorithm=""
             compromised_printed=0
         elif [[ "$line" =~ ^32:([0-9a-fA-F]+) ]]; then
@@ -257,8 +297,10 @@ generate_report() {
                 tampering_detected=1
             else
                 serial_counts["$sn"]=$(( ${serial_counts["$sn"]:-0} + 1 ))
-                [ $SILENT -eq 0 ] && print_light_yellow "    $sn"  # Indent Serial Number
-                echo "$sn" >> "$TXT"  # No indent in file output
+                # Indent Serial Number
+                [ $SILENT -eq 0 ] && print_light_yellow "    $sn"
+                # No indent in file output
+                echo "$sn" >> "$TXT"
                 log_debug "Processing SN: $sn for cert $cert_num"
             fi
         elif [[ "$line" =~ ^32:missing ]]; then
@@ -270,8 +312,10 @@ generate_report() {
             fi
         elif [[ "$line" =~ ^Issuer:\ (.+) ]]; then
             issuer="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Issuer: %s\n" "$issuer"  # Indent Issuer
-            echo "Issuer: $issuer" >> "$TXT"  # No indent in file output
+            # Indent Issuer
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Issuer: %s\n" "$issuer"
+            # No indent in file output
+            echo "Issuer: $issuer" >> "$TXT"
         elif [[ "$line" =~ ^Not\ After:\ (.+) ]]; then
             na="${BASH_REMATCH[1]}"
             if [ -z "$na" ]; then
@@ -281,8 +325,10 @@ generate_report() {
             else
                 na_epoch=$(get_epoch "$na") || { warn "Could not parse date: $na"; echo "!!!! Could not parse date: $na" >> "$TXT"; continue; }
                 days_remaining=$(( (na_epoch - currentEpoch) / 86400 ))
-                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Not After: %s\n" "$na"  # Indent Not After
-                echo "Not After: $na" >> "$TXT"  # No indent in file output
+                # Indent Not After
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Not After: %s\n" "$na"
+                # No indent in file output
+                echo "Not After: $na" >> "$TXT"
                 log_debug "Cert $cert_num: Not After $na, na_epoch: $na_epoch, days_remaining: $days_remaining $([ $days_remaining -le 0 ] && echo "(expired)")"
             fi
         elif [[ "$line" =~ ^Subject:\ (.+) ]]; then
@@ -293,22 +339,28 @@ generate_report() {
                 tampering_detected=1
             else
                 cn=$(echo "$subject" | grep -o 'CN=[^,]*' | sed 's/CN=//' | head -n1)
-                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Subject: %s\n" "$subject"  # Indent Subject
-                echo "Subject: $subject" >> "$TXT"  # No indent in file output
+                # Indent Subject
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Subject: %s\n" "$subject"
+                # No indent in file output
+                echo "Subject: $subject" >> "$TXT"
                 log_debug "Cert $cert_num: Subject $subject, CN $cn"
             fi
         elif [[ "$line" =~ ^Public\ Key\ Algorithm:\ (.+) ]]; then
             pk_algorithm="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Public Key Algorithm: %s\n" "$pk_algorithm"  # Indent Public Key Algorithm
-            echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"  # No indent in file output
+            # Indent Public Key Algorithm
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Public Key Algorithm: %s\n" "$pk_algorithm"
+            # No indent in file output
+            echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"
             log_debug "Cert $cert_num: Public Key Algorithm $pk_algorithm"
 
-            if [ -n "$sn" ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
+            # Check if the certificate is compromised
+            if [ -n "$sn" ] && [ $compromised_printed -eq 0 ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
                 L=$((L + 1))
                 [ $SILENT -eq 0 ] && warn "Certificate $cert_num is compromised"
                 echo "!!!! Certificate $cert_num is compromised" >> "$TXT"
                 compromised_printed=1
             fi
+
             if [ -n "$na_epoch" ]; then
                 if [ "$currentEpoch" -gt "$na_epoch" ]; then
                     K=$((K + 1))
@@ -316,28 +368,21 @@ generate_report() {
                     echo "!!!! Certificate $cert_num has expired" >> "$TXT"
                 elif [ $days_remaining -le $WARNING_THRESHOLD_DAYS ] && [ $days_remaining -gt 0 ] && [ $L -eq 0 ]; then
                     M=$((M + 1))
-                    [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"  # Keep warning unindented
+                    # Keep warning unindented
+                    [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"
                     echo "!!!! Certificate $cert_num nearing expiry ($days_remaining days remaining)" >> "$TXT"
                 fi
             fi
-                        # More robust AOSP check with enhanced debug logging
-            log_debug "Checking AOSP for cert $cert_num: subject=$subject, cn=$cn"
-            if [[ "$subject" =~ Android.*(Software|Keystore).*(Attestation|Key) ]] || [[ "$cn" =~ Android.*(Software|Keystore).*(Attestation|Key) ]]; then
-                log_debug "AOSP detected for cert $cert_num"
+
+            # Check if the certificate is AOSP type based on subject or CN
+            if [[ "$subject" =~ Android.*(Software|Keystore).*(Attestation|Key) ]] || \
+               [[ "$cn" =~ Android.*(Software|Keystore).*(Attestation|Key) ]]; then
                 J=$((J + 1))
                 [ $SILENT -eq 0 ] && print_pink "Certificate $cert_num is AOSP type"
                 echo "!!!! Certificate $cert_num is AOSP type" >> "$TXT"
-            else
-                log_debug "AOSP not detected for cert $cert_num"
             fi
         fi
-    done < "$TMP.cert"
-
-    if [ -n "$sn" ] && [ $compromised_printed -eq 0 ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
-        L=$((L + 1))
-        [ $SILENT -eq 0 ] && warn "Certificate $cert_num is compromised"
-        echo "!!!! Certificate $cert_num is compromised" >> "$TXT"
-    fi
+    done < "$TMP_CERT"
 
     echo "" >> "$TXT"
     echo "Serial Numbers:" >> "$TXT"
@@ -345,7 +390,8 @@ generate_report() {
         echo "    $sn" >> "$TXT"
         if [ "${serial_counts["$sn"]}" -gt 1 ]; then
             has_duplicates=1
-            [ $SILENT -eq 0 ] && print_light_yellow "    !!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file"  # Indent duplicate note
+            # Indent duplicate note
+            [ $SILENT -eq 0 ] && print_light_yellow "    !!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file"
             echo "!!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file" >> "$TXT"
         fi
     done
@@ -356,6 +402,7 @@ generate_report() {
         TAMPERED_KEYBOXES+=("${KB##*/}")
         return 1
     fi
+
     local added_to_invalid=0
     if [ $K -gt 0 ]; then
         [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
@@ -419,6 +466,7 @@ generate_report() {
             AOSP_KEYBOXES+=("${KB##*/}")
         fi
     fi
+
     if [ $K -eq 0 ] && [ $L -eq 0 ]; then
         [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         print "KeyBox is not compromised or expired"
@@ -433,7 +481,7 @@ generate_report() {
     echo "" >> "$TXT"
 }
 
-# --- Argument Parsing ---
+# Argument Parsing
 while getopts "qsd" opt; do
     case $opt in
         q) QUIET=1 ;;
@@ -445,7 +493,7 @@ done
 shift $((OPTIND-1))
 [ $DEBUG -eq 1 ] && echo "Debug log started: $(date)" > "$LOG_FILE" 2>/dev/null
 
-# --- File Selection ---
+# File Selection
 if [ $# -eq 1 ]; then
     [ -d "$1" ] && XML_FILES=("$1"/*.xml) || { [ -f "$1" ] && [[ "$1" =~ \.xml$ ]] && XML_FILES=("$1") || error "Invalid path: $1"; }
     [ ! -e "${XML_FILES[0]}" ] && error "No .xml files found in $1"
@@ -454,13 +502,14 @@ else
     [ ! -e "${XML_FILES[0]}" ] && error "No .xml files in /sdcard/Download"
 fi
 
-# --- Download Revocation List ---
+# Download Revocation List
 JSON_TEMP=$(mktemp)
 [ $QUIET -eq 0 ] && print "Checking against compromised certificates list..."
-wget -q -O "$JSON_TEMP" --no-check-certificate https://android.googleapis.com/attestation/status 2>/dev/null || error "Failed to download revocation list"
+wget -q -O "$JSON_TEMP" --no-check-certificate https://android.googleapis.com/attestation/status 2>/dev/null || \
+    error "Failed to download revocation list"
 [ ! -s "$JSON_TEMP" ] && error "Revocation list is empty"
 
-# --- Main Loop ---
+# Main Loop
 trap 'rm -f "$JSON_TEMP" 2>/dev/null' EXIT INT TERM
 for KB in "${XML_FILES[@]}"; do
     if [[ ! $(grep "BEGIN CERTIFICATE" "$KB") ]]; then
@@ -479,13 +528,12 @@ for KB in "${XML_FILES[@]}"; do
         TOTAL_FILES=$((TOTAL_FILES + 1))
         generate_report "$KB" "$TXT" "$JSON_TEMP"
     fi
-
     # Print separator unless in quiet or silent mode
     [ $QUIET -eq 0 ] && [ $SILENT -eq 0 ] && echo "----------------------------------------"
     [ $SILENT -eq 1 ] && [ $QUIET -eq 0 ] && echo ""
 done
 
-# --- Summary ---
+# Summary
 if [ $QUIET -eq 0 ]; then
     echo ""
     print "Summary:"
