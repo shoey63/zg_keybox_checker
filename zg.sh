@@ -26,6 +26,7 @@ log_debug() { [ $DEBUG -eq 1 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@" >> "$
 check_file_permissions() {
     DEFAULT_DIR="/sdcard/Download"
     if ! mkdir -p "$DEFAULT_DIR" 2>/dev/null || ! touch "$DEFAULT_DIR/_zg_test_permission.txt" 2>/dev/null; then
+        # This is an error case, so we allow output even in quiet mode to inform the user
         printf "${BOLD_RED}!!!! ERROR: Termux requires file access permission. Grant it in App Settings > Permissions > Files and retry.${NC}\n"
         exit 1
     fi
@@ -35,17 +36,52 @@ check_file_permissions() {
 check_file_permissions
 
 # --- Helper Functions ---
-print() { printf "${GREEN}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT: $@"; }
-print_yellow() { printf "${YELLOW}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_YELLOW: $@"; }
-print_light_yellow() { printf "${LIGHT_YELLOW}%s${NC}\n" "$@" 2>&1; log_debug "PRINT_LIGHT_YELLOW: $@"; }
-print_orange() { printf "${ORANGE}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_ORANGE: $@"; }
-print_red() { printf "${BOLD_RED}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_RED: $@"; }
-print_pink() { printf "${PINK}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_PINK: $@"; }
-print_blue() { printf "${BLUE}%s${NC}\n" "$@" 2>&1; log_debug "PRINT_BLUE: $@"; }
-print_bold_yellow() { printf "${BOLD_YELLOW}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_BOLD_YELLOW: $@"; }
-print_purple() { printf "${PURPLE}-- %s${NC}\n" "$@" 2>&1; log_debug "PRINT_PURPLE: $@"; }
-warn() { [ $SILENT -eq 0 ] && printf "${BOLD_RED}!!!! %s${NC}\n" "$@" 2>&1; log_debug "WARN: $@"; }
-error() { warn "ERROR: %s, cannot proceed" "$@" && exit 1; }
+print() { 
+    log_debug "PRINT: $@"
+    [ $QUIET -eq 0 ] && printf "${GREEN}-- %s${NC}\n" "$@" 2>&1
+}
+print_yellow() { 
+    log_debug "PRINT_YELLOW: $@"
+    [ $QUIET -eq 0 ] && printf "${YELLOW}-- %s${NC}\n" "$@" 2>&1
+}
+print_light_yellow() { 
+    log_debug "PRINT_LIGHT_YELLOW: $@"
+    [ $QUIET -eq 0 ] && printf "${LIGHT_YELLOW}%s${NC}\n" "$@" 2>&1
+}
+print_orange() { 
+    log_debug "PRINT_ORANGE: $@"
+    [ $QUIET -eq 0 ] && printf "${ORANGE}-- %s${NC}\n" "$@" 2>&1
+}
+print_red() { 
+    log_debug "PRINT_RED: $@"
+    [ $QUIET -eq 0 ] && printf "${BOLD_RED}-- %s${NC}\n" "$@" 2>&1
+}
+print_pink() { 
+    log_debug "PRINT_PINK: $@"
+    [ $QUIET -eq 0 ] && printf "${PINK}-- %s${NC}\n" "$@" 2>&1
+}
+print_blue() { 
+    log_debug "PRINT_BLUE: $@"
+    [ $QUIET -eq 0 ] && printf "${BLUE}%s${NC}\n" "$@" 2>&1
+}
+print_bold_yellow() { 
+    log_debug "PRINT_BOLD_YELLOW: $@"
+    [ $QUIET -eq 0 ] && printf "${BOLD_YELLOW}-- %s${NC}\n" "$@" 2>&1
+}
+print_purple() { 
+    log_debug "PRINT_PURPLE: $@"
+    [ $QUIET -eq 0 ] && printf "${PURPLE}-- %s${NC}\n" "$@" 2>&1
+}
+warn() { 
+    log_debug "WARN: $@"
+    [ $QUIET -eq 0 ] && [ $SILENT -eq 0 ] && printf "${BOLD_RED}!!!! %s${NC}\n" "$@" 2>&1
+}
+error() { 
+    log_debug "ERROR: $@"
+    # This is an error case, so we allow output even in quiet mode to inform the user
+    printf "${BOLD_RED}!!!! ERROR: %s, cannot proceed${NC}\n" "$@" 2>&1
+    exit 1
+}
 
 # --- Dependency Check ---
 install_package() {
@@ -63,14 +99,14 @@ install_package() {
                 continue
             fi
             if echo "$line" | grep -q -E "Installing|Reading package lists|Building dependency tree|Setting up|Preparing to unpack|Selecting previously"; then
-                printf "${BLUE}%s${NC}\n" "$line"
+                [ $QUIET -eq 0 ] && printf "${BLUE}%s${NC}\n" "$line"
             elif echo "$line" | grep -q -E "Error:|warning:|not found"; then
-                printf "${RED}%s${NC}\n" "$line"
+                [ $QUIET -eq 0 ] && printf "${RED}%s${NC}\n" "$line"
                 log_debug "Installation error: $line"
             elif echo "$line" | grep -q -E "Checking availability|\[\*\]"; then
-                printf "${GREEN}%s${NC}\n" "$line"
+                [ $QUIET -eq 0 ] && printf "${GREEN}%s${NC}\n" "$line"
             else
-                printf "${YELLOW}%s${NC}\n" "$line"
+                [ $QUIET -eq 0 ] && printf "${YELLOW}%s${NC}\n" "$line"
             fi
         done
         if [ $install_status -eq 0 ]; then
@@ -207,7 +243,7 @@ generate_report() {
             cert_num="${BASH_REMATCH[1]}"
             log_debug "Set cert_num to '$cert_num'"
             if [ $SILENT -eq 0 ]; then
-                [ $cert_num -gt 1 ] && echo ""
+                [ $cert_num -gt 1 ] && [ $QUIET -eq 0 ] && echo ""
                 print_blue "$line"
             fi
             echo "$line" >> "$TXT"
@@ -234,7 +270,7 @@ generate_report() {
             fi
         elif [[ "$line" =~ ^Issuer:\ (.+) ]]; then
             issuer="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && printf "Issuer: %s\n" "$issuer"
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Issuer: %s\n" "$issuer"
             echo "Issuer: $issuer" >> "$TXT"
         elif [[ "$line" =~ ^Not\ After:\ (.+) ]]; then
             na="${BASH_REMATCH[1]}"
@@ -245,7 +281,7 @@ generate_report() {
             else
                 na_epoch=$(get_epoch "$na") || { warn "Could not parse date: $na"; echo "!!!! Could not parse date: $na" >> "$TXT"; continue; }
                 days_remaining=$(( (na_epoch - currentEpoch) / 86400 ))
-                [ $SILENT -eq 0 ] && printf "Not After: %s\n" "$na"
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Not After: %s\n" "$na"
                 echo "Not After: $na" >> "$TXT"
                 log_debug "Cert $cert_num: Not After $na, na_epoch: $na_epoch, days_remaining: $days_remaining $([ $days_remaining -le 0 ] && echo "(expired)")"
             fi
@@ -257,13 +293,13 @@ generate_report() {
                 tampering_detected=1
             else
                 cn=$(echo "$subject" | grep -o 'CN=[^,]*' | sed 's/CN=//' | head -n1)
-                [ $SILENT -eq 0 ] && printf "Subject: %s\n" "$subject"
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Subject: %s\n" "$subject"
                 echo "Subject: $subject" >> "$TXT"
                 log_debug "Cert $cert_num: Subject $subject, CN $cn"
             fi
         elif [[ "$line" =~ ^Public\ Key\ Algorithm:\ (.+) ]]; then
             pk_algorithm="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && printf "Public Key Algorithm: %s\n" "$pk_algorithm"
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Public Key Algorithm: %s\n" "$pk_algorithm"
             echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"
             log_debug "Cert $cert_num: Public Key Algorithm $pk_algorithm"
 
@@ -280,7 +316,7 @@ generate_report() {
                     echo "!!!! Certificate $cert_num has expired" >> "$TXT"
                 elif [ $days_remaining -le $WARNING_THRESHOLD_DAYS ] && [ $days_remaining -gt 0 ] && [ $L -eq 0 ]; then
                     M=$((M + 1))
-                    [ $SILENT -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"
+                    [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"
                     echo "!!!! Certificate $cert_num nearing expiry ($days_remaining days remaining)" >> "$TXT"
                 fi
             fi
@@ -317,14 +353,13 @@ generate_report() {
     fi
     local added_to_invalid=0
     if [ $K -gt 0 ]; then
-        [ $SILENT -eq 0 ] && echo ""
+        [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $SILENT -eq 1 ]; then
             print_red "KeyBox has EXPIRED"
         else
             warn "KeyBox has EXPIRED"
         fi
         echo "!!!! KeyBox has EXPIRED" >> "$TXT"
-        # Reduce the two-line gap to one line by removing one echo ""
         if [ $L -gt 0 ]; then
             if [ $SILENT -eq 1 ]; then
                 print_red "KeyBox is COMPROMISED"
@@ -332,13 +367,13 @@ generate_report() {
                 warn "KeyBox is COMPROMISED"
             fi
             echo "!!!! KeyBox is COMPROMISED" >> "$TXT"
-            [ $SILENT -eq 0 ] && echo ""
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             if [ $added_to_invalid -eq 0 ]; then
                 TOTAL_INVALID=$((TOTAL_INVALID + 1))
                 INVALID_KEYBOXES+=("${KB##*/}")
             fi
         else
-            [ $SILENT -eq 0 ] && echo ""
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             if [ $L -eq 0 ]; then
                 TOTAL_INVALID=$((TOTAL_INVALID + 1))
                 INVALID_KEYBOXES+=("${KB##*/}")
@@ -346,14 +381,14 @@ generate_report() {
             fi
         fi
     elif [ $L -gt 0 ]; then
-        [ $SILENT -eq 0 ] && echo ""
+        [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $SILENT -eq 1 ]; then
             print_red "KeyBox is COMPROMISED"
         else
             warn "KeyBox is COMPROMISED"
         fi
         echo "!!!! KeyBox is COMPROMISED" >> "$TXT"
-        [ $SILENT -eq 0 ] && echo ""
+        [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $added_to_invalid -eq 0 ]; then
             TOTAL_INVALID=$((TOTAL_INVALID + 1))
             INVALID_KEYBOXES+=("${KB##*/}")
@@ -362,14 +397,14 @@ generate_report() {
 
     if [ $K -eq 0 ]; then
         if [ $M -gt 0 ] && [ $L -eq 0 ]; then
-            [ $SILENT -eq 0 ] && echo ""
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             print_orange "KeyBox has certificates nearing expiry"
             echo "!!!! KeyBox has certificates nearing expiry" >> "$TXT"
             TOTAL_WARNING=$((TOTAL_WARNING + 1))
             WARNING_KEYBOXES+=("${KB##*/}")
         fi
         if [ $J -gt 0 ]; then
-            [ $SILENT -eq 0 ] && echo ""
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             if [ $SILENT -eq 1 ]; then
                 print_pink "KeyBox is AOSP type"
             else
@@ -380,11 +415,10 @@ generate_report() {
         fi
     fi
     if [ $K -eq 0 ] && [ $L -eq 0 ]; then
-        # Add a blank line above "-- KeyBox is not compromised or expired"
-        [ $SILENT -eq 0 ] && echo ""
+        [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         print "KeyBox is not compromised or expired"
         echo "-- KeyBox is not compromised or expired" >> "$TXT"
-        [ $SILENT -eq 0 ] && echo ""
+        [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $J -eq 0 ]; then
             TOTAL_VALID=$((TOTAL_VALID + 1))
             VALID_KEYBOXES+=("${KB##*/}")
@@ -441,9 +475,9 @@ for KB in "${XML_FILES[@]}"; do
         generate_report "$KB" "$TXT" "$JSON_TEMP"
     fi
 
-    # Print separator unless in silent mode
+    # Print separator unless in quiet or silent mode
     [ $QUIET -eq 0 ] && [ $SILENT -eq 0 ] && echo "----------------------------------------"
-    [ $SILENT -eq 1 ] && echo ""
+    [ $SILENT -eq 1 ] && [ $QUIET -eq 0 ] && echo ""
 done
 
 # --- Summary ---
@@ -489,4 +523,4 @@ if [ $QUIET -eq 0 ]; then
     fi
     print "Check complete"
 fi
-[ $DEBUG -eq 1 ] && echo "Debug log saved to $LOG_FILE"
+[ $DEBUG -eq 1 ] && [ $QUIET -eq 0 ] && echo "Debug log saved to $LOG_FILE"
