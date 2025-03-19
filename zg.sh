@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# zg.sh v2.1 - Updated March 2025
+# zg.sh v2.2 - Updated March 2025
 # Usage: ./zg.sh [-q] [-s] [-d] [directory_or_file]
 # Dependencies: openssl-tool, wget
 # Purpose: Processes keybox.xml files to check certificate expiration and revocation status
@@ -18,6 +18,9 @@ declare -a INVALID_KEYBOXES AOSP_KEYBOXES WARNING_KEYBOXES TAMPERED_KEYBOXES SKI
 GREEN='\033[1;32m' YELLOW='\033[1;38;5;220m' LIGHT_YELLOW='\033[0;93m' PINK='\033[1;95m'
 RED='\033[31m' BOLD_RED='\033[1;31m' ORANGE='\033[1;38;5;208m' NC='\033[0m' BLUE='\033[1;34m'
 BOLD_YELLOW='\033[1;33m' PURPLE='\033[1;35m'
+
+# Start timing for the entire script
+START_TIME=$(date +%s)
 
 # Debug Logging
 # Log debug messages to a file with a timestamp if DEBUG is enabled
@@ -179,8 +182,10 @@ validate_xml() {
 # Process certificates, check for expiration, compromised status, AOSP type, and tampering
 generate_report() {
     local KB="$1" TXT="$2" JSON="$3"
+    local start_time=$(date +%s)
     local TMP=$(mktemp) P7B=$(mktemp) CER=$(mktemp) TMP_CERT=$(mktemp)
     local tampering_detected=0
+    local txt_output="KeyBox file: $KB\n\n"
     trap 'rm -f "$TMP" "$P7B" "$CER" "$TMP_CERT" 2>/dev/null' RETURN
     if ! validate_xml "$KB"; then
         if [ $SILENT -eq 1 ]; then
@@ -189,9 +194,12 @@ generate_report() {
         else
             warn "Invalid XML structure in $KB - possible tampering detected"
         fi
-        echo "!!!! ERROR: Invalid XML structure in $KB - possible tampering detected" >> "$TXT"
+        txt_output+="!!!! ERROR: Invalid XML structure in $KB - possible tampering detected\n"
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     fi
 
@@ -203,9 +211,12 @@ generate_report() {
         else
             warn "Failed to reformat $KB - possible tampering or corruption"
         fi
-        echo "!!!! ERROR: Failed to reformat $KB - possible tampering or corruption" >> "$TXT"
+        txt_output+="!!!! ERROR: Failed to reformat $KB - possible tampering or corruption\n"
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     fi
 
@@ -216,9 +227,12 @@ generate_report() {
         else
             warn "Failed to convert $KB to pkcs7 - invalid certificate data, possible tampering (e.g., invalid title)"
         fi
-        echo "!!!! ERROR: Failed to convert $KB to pkcs7 - invalid certificate data, possible tampering (e.g., invalid title)" >> "$TXT"
+        txt_output+="!!!! ERROR: Failed to convert $KB to pkcs7 - invalid certificate data, possible tampering (e.g., invalid title)\n"
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     fi
 
@@ -229,14 +243,15 @@ generate_report() {
         else
             warn "Failed to dump certificates from $KB - invalid pkcs7 data, possible tampering"
         fi
-        echo "!!!! ERROR: Failed to dump certificates from $KB - invalid pkcs7 data, possible tampering" >> "$TXT"
+        txt_output+="!!!! ERROR: Failed to dump certificates from $KB - invalid pkcs7 data, possible tampering\n"
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     fi
 
-    echo "KeyBox file: $KB" > "$TXT"
-    echo "" >> "$TXT"
     if [ $SILENT -eq 1 ]; then
         print_bold_yellow "Results for: $KB"
     else
@@ -269,9 +284,12 @@ generate_report() {
         /^Public Key Algorithm:/ {sub(/^Public Key Algorithm: /, ""); print "Public Key Algorithm: " $0; next}
     ' > "$TMP_CERT" || {
         warn "Failed to process certificate data with awk"
-        echo "!!!! ERROR: Failed to process certificate data with awk" >> "$TXT"
+        txt_output+="!!!! ERROR: Failed to process certificate data with awk\n"
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     }
 
@@ -286,28 +304,28 @@ generate_report() {
                 print_blue "$line"
             fi
             # No indent in file output
-            echo "$line" >> "$TXT"
+            txt_output+="$line\n"
             sn="" na="" na_epoch="" days_remaining="" issuer="" subject="" cn="" pk_algorithm=""
             compromised_printed=0
         elif [[ "$line" =~ ^32:([0-9a-fA-F]+) ]]; then
             sn="${BASH_REMATCH[1]}"
             if [ -z "$sn" ]; then
                 warn "Certificate $cert_num missing Serial Number - possible tampering"
-                echo "!!!! Certificate $cert_num missing Serial Number - possible tampering" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num missing Serial Number - possible tampering\n"
                 tampering_detected=1
             else
                 serial_counts["$sn"]=$(( ${serial_counts["$sn"]:-0} + 1 ))
                 # Indent Serial Number
                 [ $SILENT -eq 0 ] && print_light_yellow "    $sn"
                 # No indent in file output
-                echo "$sn" >> "$TXT"
+                txt_output+="$sn\n"
                 log_debug "Processing SN: $sn for cert $cert_num"
             fi
         elif [[ "$line" =~ ^32:missing ]]; then
             sn=""
             if [ -n "$cn" ] && [[ ! "$cn" =~ Android.*Software\ Attestation ]]; then
                 warn "Certificate $cert_num missing Serial Number - possible tampering"
-                echo "!!!! Certificate $cert_num missing Serial Number - possible tampering" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num missing Serial Number - possible tampering\n"
                 tampering_detected=1
             fi
         elif [[ "$line" =~ ^Issuer:\ (.+) ]]; then
@@ -315,34 +333,34 @@ generate_report() {
             # Indent Issuer
             [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Issuer: %s\n" "$issuer"
             # No indent in file output
-            echo "Issuer: $issuer" >> "$TXT"
+            txt_output+="Issuer: $issuer\n"
         elif [[ "$line" =~ ^Not\ After:\ (.+) ]]; then
             na="${BASH_REMATCH[1]}"
             if [ -z "$na" ]; then
                 warn "Certificate $cert_num missing Not After date - possible tampering"
-                echo "!!!! Certificate $cert_num missing Not After date - possible tampering" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num missing Not After date - possible tampering\n"
                 tampering_detected=1
             else
-                na_epoch=$(get_epoch "$na") || { warn "Could not parse date: $na"; echo "!!!! Could not parse date: $na" >> "$TXT"; continue; }
+                na_epoch=$(get_epoch "$na") || { warn "Could not parse date: $na"; txt_output+="!!!! Could not parse date: $na\n"; continue; }
                 days_remaining=$(( (na_epoch - currentEpoch) / 86400 ))
                 # Indent Not After
                 [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Not After: %s\n" "$na"
                 # No indent in file output
-                echo "Not After: $na" >> "$TXT"
+                txt_output+="Not After: $na\n"
                 log_debug "Cert $cert_num: Not After $na, na_epoch: $na_epoch, days_remaining: $days_remaining $([ $days_remaining -le 0 ] && echo "(expired)")"
             fi
         elif [[ "$line" =~ ^Subject:\ (.+) ]]; then
             subject="${BASH_REMATCH[1]}"
             if [ -z "$subject" ]; then
                 warn "Certificate $cert_num missing Subject - possible tampering"
-                echo "!!!! Certificate $cert_num missing Subject - possible tampering" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num missing Subject - possible tampering\n"
                 tampering_detected=1
             else
                 cn=$(echo "$subject" | grep -o 'CN=[^,]*' | sed 's/CN=//' | head -n1)
                 # Indent Subject
                 [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Subject: %s\n" "$subject"
                 # No indent in file output
-                echo "Subject: $subject" >> "$TXT"
+                txt_output+="Subject: $subject\n"
                 log_debug "Cert $cert_num: Subject $subject, CN $cn"
             fi
         elif [[ "$line" =~ ^Public\ Key\ Algorithm:\ (.+) ]]; then
@@ -350,14 +368,14 @@ generate_report() {
             # Indent Public Key Algorithm
             [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Public Key Algorithm: %s\n" "$pk_algorithm"
             # No indent in file output
-            echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"
+            txt_output+="Public Key Algorithm: $pk_algorithm\n"
             log_debug "Cert $cert_num: Public Key Algorithm $pk_algorithm"
 
             # Check if the certificate is compromised
-            if [ -n "$sn" ] && [ $compromised_printed -eq 0 ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
+            if [ -n "$sn" ] && [ $compromised_printed -eq 0 ] && [ "${COMPROMISED_SNS["$sn"]}" ]; then
                 L=$((L + 1))
                 [ $SILENT -eq 0 ] && warn "Certificate $cert_num is compromised"
-                echo "!!!! Certificate $cert_num is compromised" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num is compromised\n"
                 compromised_printed=1
             fi
 
@@ -365,12 +383,12 @@ generate_report() {
                 if [ "$currentEpoch" -gt "$na_epoch" ]; then
                     K=$((K + 1))
                     [ $SILENT -eq 0 ] && warn "Certificate $cert_num has expired"
-                    echo "!!!! Certificate $cert_num has expired" >> "$TXT"
+                    txt_output+="!!!! Certificate $cert_num has expired\n"
                 elif [ $days_remaining -le $WARNING_THRESHOLD_DAYS ] && [ $days_remaining -gt 0 ] && [ $L -eq 0 ]; then
                     M=$((M + 1))
                     # Keep warning unindented
                     [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"
-                    echo "!!!! Certificate $cert_num nearing expiry ($days_remaining days remaining)" >> "$TXT"
+                    txt_output+="!!!! Certificate $cert_num nearing expiry ($days_remaining days remaining)\n"
                 fi
             fi
 
@@ -379,27 +397,29 @@ generate_report() {
                [[ "$cn" =~ Android.*(Software|Keystore).*(Attestation|Key) ]]; then
                 J=$((J + 1))
                 [ $SILENT -eq 0 ] && print_pink "Certificate $cert_num is AOSP type"
-                echo "!!!! Certificate $cert_num is AOSP type" >> "$TXT"
+                txt_output+="!!!! Certificate $cert_num is AOSP type\n"
             fi
         fi
     done < "$TMP_CERT"
 
-    echo "" >> "$TXT"
-    echo "Serial Numbers:" >> "$TXT"
+    txt_output+="\nSerial Numbers:\n"
     for sn in "${!serial_counts[@]}"; do
-        echo "    $sn" >> "$TXT"
+        txt_output+="    $sn\n"
         if [ "${serial_counts["$sn"]}" -gt 1 ]; then
             has_duplicates=1
             # Indent duplicate note
             [ $SILENT -eq 0 ] && print_light_yellow "    !!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file"
-            echo "!!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file" >> "$TXT"
+            txt_output+="!!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file\n"
         fi
     done
-    echo "" >> "$TXT"
+    txt_output+="\n"
 
     if [ $tampering_detected -eq 1 ]; then
         TOTAL_TAMPERED=$((TOTAL_TAMPERED + 1))
         TAMPERED_KEYBOXES+=("${KB##*/}")
+        printf "%b" "$txt_output" > "$TXT"
+        local end_time=$(date +%s)
+        log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
         return 1
     fi
 
@@ -411,14 +431,14 @@ generate_report() {
         else
             warn "KeyBox has EXPIRED"
         fi
-        echo "!!!! KeyBox has EXPIRED" >> "$TXT"
+        txt_output+="!!!! KeyBox has EXPIRED\n"
         if [ $L -gt 0 ]; then
             if [ $SILENT -eq 1 ]; then
                 print_red "KeyBox is COMPROMISED"
             else
                 warn "KeyBox is COMPROMISED"
             fi
-            echo "!!!! KeyBox is COMPROMISED" >> "$TXT"
+            txt_output+="!!!! KeyBox is COMPROMISED\n"
             [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             if [ $added_to_invalid -eq 0 ]; then
                 TOTAL_INVALID=$((TOTAL_INVALID + 1))
@@ -439,7 +459,7 @@ generate_report() {
         else
             warn "KeyBox is COMPROMISED"
         fi
-        echo "!!!! KeyBox is COMPROMISED" >> "$TXT"
+        txt_output+="!!!! KeyBox is COMPROMISED\n"
         [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $added_to_invalid -eq 0 ]; then
             TOTAL_INVALID=$((TOTAL_INVALID + 1))
@@ -451,7 +471,7 @@ generate_report() {
         if [ $M -gt 0 ] && [ $L -eq 0 ]; then
             [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
             print_orange "KeyBox has certificates nearing expiry"
-            echo "!!!! KeyBox has certificates nearing expiry" >> "$TXT"
+            txt_output+="!!!! KeyBox has certificates nearing expiry\n"
             TOTAL_WARNING=$((TOTAL_WARNING + 1))
             WARNING_KEYBOXES+=("${KB##*/}")
         fi
@@ -462,7 +482,7 @@ generate_report() {
             else
                 print_pink "KeyBox is AOSP type"
             fi
-            echo "!!!! KeyBox is AOSP type" >> "$TXT"
+            txt_output+="!!!! KeyBox is AOSP type\n"
             AOSP_KEYBOXES+=("${KB##*/}")
         fi
     fi
@@ -470,7 +490,7 @@ generate_report() {
     if [ $K -eq 0 ] && [ $L -eq 0 ]; then
         [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         print "KeyBox is not compromised or expired"
-        echo "-- KeyBox is not compromised or expired" >> "$TXT"
+        txt_output+="-- KeyBox is not compromised or expired\n"
         [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && echo ""
         if [ $J -eq 0 ]; then
             TOTAL_VALID=$((TOTAL_VALID + 1))
@@ -478,7 +498,10 @@ generate_report() {
         fi
     fi
 
-    echo "" >> "$TXT"
+    txt_output+="\n"
+    printf "%b" "$txt_output" > "$TXT"
+    local end_time=$(date +%s)
+    log_debug "generate_report for $KB took $((end_time - start_time)) seconds"
 }
 
 # Argument Parsing
@@ -508,6 +531,15 @@ JSON_TEMP=$(mktemp)
 wget -q -O "$JSON_TEMP" --no-check-certificate https://android.googleapis.com/attestation/status 2>/dev/null || \
     error "Failed to download revocation list"
 [ ! -s "$JSON_TEMP" ] && error "Revocation list is empty"
+
+# Load revocation list into memory
+declare -A COMPROMISED_SNS
+while IFS= read -r line; do
+    if [[ "$line" =~ \"([0-9a-fA-F]+)\": ]]; then
+        sn="${BASH_REMATCH[1]}"
+        COMPROMISED_SNS["$sn"]=1
+    fi
+done < "$JSON_TEMP"
 
 # Main Loop
 trap 'rm -f "$JSON_TEMP" 2>/dev/null' EXIT INT TERM
@@ -575,5 +607,7 @@ if [ $QUIET -eq 0 ]; then
         print "  No valid keyboxes found"
     fi
     print "Check complete"
+    END_TIME=$(date +%s)
+    print "Total execution time: $((END_TIME - START_TIME)) seconds"
 fi
 [ $DEBUG -eq 1 ] && [ $QUIET -eq 0 ] && echo "Debug log saved to $LOG_FILE"
