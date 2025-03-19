@@ -244,9 +244,9 @@ generate_report() {
             log_debug "Set cert_num to '$cert_num'"
             if [ $SILENT -eq 0 ]; then
                 [ $cert_num -gt 1 ] && [ $QUIET -eq 0 ] && echo ""
-                print_blue "$line"
+                print_blue "$line"      # Unindent CERTIFICATE line
             fi
-            echo "$line" >> "$TXT"
+            echo "$line" >> "$TXT"  # No indent in file output
             sn="" na="" na_epoch="" days_remaining="" issuer="" subject="" cn="" pk_algorithm=""
             compromised_printed=0
         elif [[ "$line" =~ ^32:([0-9a-fA-F]+) ]]; then
@@ -257,8 +257,8 @@ generate_report() {
                 tampering_detected=1
             else
                 serial_counts["$sn"]=$(( ${serial_counts["$sn"]:-0} + 1 ))
-                [ $SILENT -eq 0 ] && print_light_yellow "$sn"
-                echo "$sn" >> "$TXT"
+                [ $SILENT -eq 0 ] && print_light_yellow "    $sn"  # Indent Serial Number
+                echo "$sn" >> "$TXT"  # No indent in file output
                 log_debug "Processing SN: $sn for cert $cert_num"
             fi
         elif [[ "$line" =~ ^32:missing ]]; then
@@ -270,8 +270,8 @@ generate_report() {
             fi
         elif [[ "$line" =~ ^Issuer:\ (.+) ]]; then
             issuer="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Issuer: %s\n" "$issuer"
-            echo "Issuer: $issuer" >> "$TXT"
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Issuer: %s\n" "$issuer"  # Indent Issuer
+            echo "Issuer: $issuer" >> "$TXT"  # No indent in file output
         elif [[ "$line" =~ ^Not\ After:\ (.+) ]]; then
             na="${BASH_REMATCH[1]}"
             if [ -z "$na" ]; then
@@ -281,8 +281,8 @@ generate_report() {
             else
                 na_epoch=$(get_epoch "$na") || { warn "Could not parse date: $na"; echo "!!!! Could not parse date: $na" >> "$TXT"; continue; }
                 days_remaining=$(( (na_epoch - currentEpoch) / 86400 ))
-                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Not After: %s\n" "$na"
-                echo "Not After: $na" >> "$TXT"
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Not After: %s\n" "$na"  # Indent Not After
+                echo "Not After: $na" >> "$TXT"  # No indent in file output
                 log_debug "Cert $cert_num: Not After $na, na_epoch: $na_epoch, days_remaining: $days_remaining $([ $days_remaining -le 0 ] && echo "(expired)")"
             fi
         elif [[ "$line" =~ ^Subject:\ (.+) ]]; then
@@ -293,14 +293,14 @@ generate_report() {
                 tampering_detected=1
             else
                 cn=$(echo "$subject" | grep -o 'CN=[^,]*' | sed 's/CN=//' | head -n1)
-                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Subject: %s\n" "$subject"
-                echo "Subject: $subject" >> "$TXT"
+                [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Subject: %s\n" "$subject"  # Indent Subject
+                echo "Subject: $subject" >> "$TXT"  # No indent in file output
                 log_debug "Cert $cert_num: Subject $subject, CN $cn"
             fi
         elif [[ "$line" =~ ^Public\ Key\ Algorithm:\ (.+) ]]; then
             pk_algorithm="${BASH_REMATCH[1]}"
-            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "Public Key Algorithm: %s\n" "$pk_algorithm"
-            echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"
+            [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "    Public Key Algorithm: %s\n" "$pk_algorithm"  # Indent Public Key Algorithm
+            echo "Public Key Algorithm: $pk_algorithm" >> "$TXT"  # No indent in file output
             log_debug "Cert $cert_num: Public Key Algorithm $pk_algorithm"
 
             if [ -n "$sn" ] && grep -w "\"$sn\":" "$JSON" >/dev/null 2>&1; then
@@ -316,14 +316,19 @@ generate_report() {
                     echo "!!!! Certificate $cert_num has expired" >> "$TXT"
                 elif [ $days_remaining -le $WARNING_THRESHOLD_DAYS ] && [ $days_remaining -gt 0 ] && [ $L -eq 0 ]; then
                     M=$((M + 1))
-                    [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"
+                    [ $SILENT -eq 0 ] && [ $QUIET -eq 0 ] && printf "${YELLOW}!!!! Certificate %s nearing expiry (%d days remaining)${NC}\n" "$cert_num" "$days_remaining"  # Keep warning unindented
                     echo "!!!! Certificate $cert_num nearing expiry ($days_remaining days remaining)" >> "$TXT"
                 fi
             fi
-            if [[ "$subject" =~ Android.*Software\ Attestation ]] || [ -n "$cn" ] && [[ "$cn" =~ Android.*Software\ Attestation ]]; then
+                        # More robust AOSP check with enhanced debug logging
+            log_debug "Checking AOSP for cert $cert_num: subject=$subject, cn=$cn"
+            if [[ "$subject" =~ Android.*(Software|Keystore).*(Attestation|Key) ]] || [[ "$cn" =~ Android.*(Software|Keystore).*(Attestation|Key) ]]; then
+                log_debug "AOSP detected for cert $cert_num"
                 J=$((J + 1))
                 [ $SILENT -eq 0 ] && print_pink "Certificate $cert_num is AOSP type"
                 echo "!!!! Certificate $cert_num is AOSP type" >> "$TXT"
+            else
+                log_debug "AOSP not detected for cert $cert_num"
             fi
         fi
     done < "$TMP.cert"
@@ -340,7 +345,7 @@ generate_report() {
         echo "    $sn" >> "$TXT"
         if [ "${serial_counts["$sn"]}" -gt 1 ]; then
             has_duplicates=1
-            [ $SILENT -eq 0 ] && print_light_yellow "!!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file"
+            [ $SILENT -eq 0 ] && print_light_yellow "    !!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file"  # Indent duplicate note
             echo "!!!! Note: Serial number $sn appears ${serial_counts["$sn"]} times in the keybox file" >> "$TXT"
         fi
     done
